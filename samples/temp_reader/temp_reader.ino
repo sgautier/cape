@@ -1,18 +1,16 @@
 // Source : https://arduino-france.site/thermistance/
 
-#define B 3950 // ntc b constant
-#define RESISTOR 100000 // résistance de la résistance, 100 kOhm
-#define THERMISTOR 100000 // résistance nominale de la thermistance, 100 kOhm
-#define NOMINAL 25 // température nominale
-
-#define sensor A1
-
+#define TEMPERATURE_NTC_B 3950 // ntc b constant
+#define TEMPERATURE_RESISTOR 100000 // résistance de la résistance, 100 kOhm
+#define TEMPERATURE_THERMISTOR 100000 // résistance nominale de la thermistance, 100 kOhm
+#define TEMPERATURE_NOMINAL 25 // température nominale
+#define TEMPERATURE_SENSOR A1 // Pin utilisé sur l'Arduino pour relever la température
 #define TEMPERATURE_NB_SAMPLES 20 // Number of samples to calculate final temperature value
 #define TEMPERATURE_SAMPLE_DELAY 100 // Delay time to wait between temperature samples get value
 
 void setup() {
     Serial.begin(9600);
-    pinMode(sensor, INPUT);
+    pinMode(TEMPERATURE_SENSOR, INPUT);
 }
 
 void loop() {
@@ -29,14 +27,14 @@ float getSampledTemperature() {
 }
 
 float getTemperature() {
-  int t = analogRead(sensor);
+  int t = analogRead(TEMPERATURE_SENSOR);
   float tr = 1023.0 / t - 1;
-  tr = RESISTOR / tr;
+  tr = TEMPERATURE_RESISTOR / tr;
   float steinhart;
-  steinhart = tr / THERMISTOR;
+  steinhart = tr / TEMPERATURE_THERMISTOR;
   steinhart = log(steinhart);
-  steinhart /= B;
-  steinhart += 1.0 / (NOMINAL + 273.15);
+  steinhart /= TEMPERATURE_NTC_B;
+  steinhart += 1.0 / (TEMPERATURE_NOMINAL + 273.15);
   steinhart = 1.0 / steinhart;
   steinhart -= 273.15;
   return steinhart;
