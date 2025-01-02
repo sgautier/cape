@@ -7,7 +7,8 @@
 
 #define sensor A1
 
-#define NB_SAMPLES 10
+#define TEMPERATURE_NB_SAMPLES 20 // Number of samples to calculate final temperature value
+#define TEMPERATURE_SAMPLE_DELAY 100 // Delay time to wait between temperature samples get value
 
 void setup() {
     Serial.begin(9600);
@@ -15,13 +16,16 @@ void setup() {
 }
 
 void loop() {
-  float totalTemperature = 0;
-  for (int i=1 ; i <= NB_SAMPLES ; i++) {
-    totalTemperature += getTemperature();
-    delay(200);
-  }
+  Serial.println(getSampledTemperature());
+}
 
-  Serial.println(totalTemperature / NB_SAMPLES);
+float getSampledTemperature() {
+  float totalTemperature = 0;
+  for (int i=1 ; i <= TEMPERATURE_NB_SAMPLES ; i++) {
+    totalTemperature += getTemperature();
+    delay(TEMPERATURE_SAMPLE_DELAY);
+  }
+  return totalTemperature / TEMPERATURE_NB_SAMPLES;
 }
 
 float getTemperature() {
