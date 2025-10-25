@@ -285,18 +285,31 @@ uint16_t tempToColor565(float t) {
     if (t > TEMP_MAX_C) { t = TEMP_MAX_C; }
     float k = (t - TEMP_MIN_C) / (TEMP_MAX_C - TEMP_MIN_C); // 0..1
 
-    uint8_t r, g, b;
-    if (k < 0.5f) {
-        // 0..0.5 : bleu (0,0,255) -> jaune (255,255,0)
-        float p = k / 0.5f; // 0..1
-        r = (uint8_t) (255.0f * p);
-        g = (uint8_t) (255.0f * p);
-        b = (uint8_t) (255.0f * (1.0f - p));
+    uint8_t r = 0, g = 0, b = 0;
+
+    if (k < 0.25f) {
+        // Bleu (0,0,255) -> Cyan (0,255,255)
+        float p = k / 0.25f;            // 0..1
+        r = 0;
+        g = (uint8_t)(255.0f * p);
+        b = 255;
+    } else if (k < 0.50f) {
+        // Cyan (0,255,255) -> Vert (0,255,0)
+        float p = (k - 0.25f) / 0.25f;  // 0..1
+        r = 0;
+        g = 255;
+        b = (uint8_t)(255.0f * (1.0f - p));
+    } else if (k < 0.75f) {
+        // Vert (0,255,0) -> Jaune (255,255,0)
+        float p = (k - 0.50f) / 0.25f;  // 0..1
+        r = (uint8_t)(255.0f * p);
+        g = 255;
+        b = 0;
     } else {
-        // 0.5..1 : jaune (255,255,0) -> rouge (255,0,0)
-        float p = (k - 0.5f) / 0.5f; // 0..1
+        // Jaune (255,255,0) -> Rouge (255,0,0)
+        float p = (k - 0.75f) / 0.25f;  // 0..1
         r = 255;
-        g = (uint8_t) (255.0f * (1.0f - p));
+        g = (uint8_t)(255.0f * (1.0f - p));
         b = 0;
     }
     return tft.color565(r, g, b);
