@@ -44,9 +44,9 @@ Adafruit_ST7789 tft = Adafruit_ST7789(10, 9, 8);
 
 // Ballon
 #define TANK_X 140
-#define TANK_Y 20
+#define TANK_Y 70
 #define TANK_W 80
-#define TANK_H 300
+#define TANK_H 250
 
 // Poêle
 #define STOVE_X 10
@@ -76,24 +76,23 @@ float bufferTankMiddleTemperature, previousBufferTankMiddleTemperature = NAN;
 float bufferTankTopTemperature, previousBufferTankTopTemperature = NAN;
 bool isCirculatorOn, previousIsCirculatorOn = false;
 
+// --- Durées relais (ms) ---
+unsigned long relayOnStartedAtMs = 0;   // timestamp du dernier ON
+unsigned long relayOnElapsedMs   = 0;   // durée courante ON (ms) si ON, sinon 0
+unsigned long relayOnTotalMs     = 0;   // cumul des durées ON (ms) sur les sessions terminées
+
 // --- Protos ---
 static bool hasChanged(float oldValue, float newValue, float epsilon = 0.1f);
-
 float getSampledTemperature(int sensor);
-
 float getTemperature(int sensor);
-
 void setRelay(bool on);
-
 uint16_t tempToColor565(float t);
-
 void drawStaticUI();
-
 void updateStove();
-
 void updateTank();
-
 void updateCirculator();
+void updateStatsOverlay();
+static void formatMMSS(unsigned long seconds, char *out, unsigned int n);
 
 // ------------------------------------------------------------------
 
@@ -103,7 +102,7 @@ void setup() {
 
     tft.init(SCREEN_W, SCREEN_H);
     tft.setRotation(0); // 0..3
-    tft.fillScreen(ST77XX_BLACK);
+    tft.fillScreen(ST77XX_WHITE);
     tft.setTextWrap(false);
     tft.setTextSize(1);
 
@@ -124,9 +123,32 @@ void loop() {
     }
     setRelay(isCirculatorOn);
 
+    // --- Comptage du temps ON du relais (ms) ---
+    const unsigned long now = millis();
+
+    // front montant : OFF -> ON
+    if (isCirculatorOn && !previousIsCirculatorOn) {
+        relayOnStartedAtMs = now;
+        relayOnElapsedMs   = 0;
+    }
+
+    // front descendant : ON -> OFF
+    if (!isCirculatorOn && previousIsCirculatorOn) {
+        relayOnTotalMs += (now - relayOnStartedAtMs); // ajoute la session terminée
+        relayOnElapsedMs = 0;
+    }
+
+    // mise à jour continue quand ON
+    if (isCirculatorOn) {
+        relayOnElapsedMs = (now - relayOnStartedAtMs);
+    } else {
+        relayOnElapsedMs = 0;
+    }
+
     updateStove();
     updateTank();
     updateCirculator();
+    updateStatsOverlay();
 }
 
 // ------------------------------------------------------------------
@@ -141,25 +163,25 @@ void drawStaticUI() {
     // Porte
     int doorX = STOVE_X + (STOVE_W - DOOR_W) / 2;
     int doorY = STOVE_Y + STOVE_H - DOOR_H - 10;
-    tft.drawRect(doorX, doorY, DOOR_W, DOOR_H, ST77XX_WHITE);
+    tft.drawRect(doorX, doorY, DOOR_W, DOOR_H, ST77XX_BLACK);
     // Cheminée
-    tft.fillRect(CHIMNEY_X, CHIMNEY_Y, CHIMNEY_W, CHIMNEY_H, ST77XX_WHITE);
+    tft.fillRect(CHIMNEY_X, CHIMNEY_Y, CHIMNEY_W, CHIMNEY_H, ST77XX_BLACK);
     // Label
     tft.setCursor(STOVE_X, STOVE_Y - 12);
-    tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+    tft.setTextColor(ST77XX_BLACK, ST77XX_WHITE);
     tft.print("Poele");
 
     // Ballon : corps
-    tft.drawRect(TANK_X, TANK_Y, TANK_W, TANK_H, ST77XX_WHITE);
+    tft.drawRect(TANK_X, TANK_Y, TANK_W, TANK_H, ST77XX_BLACK);
     tft.setCursor(TANK_X, TANK_Y - 12);
     tft.print("Ballon tampon");
 
     // Lignes de liaison
-    tft.drawLine(LINE_X1, LINE_MID_Y, LINE_X2, LINE_MID_Y, ST77XX_WHITE);
-    tft.drawLine(LINE_X1, LINE_BOT_Y, LINE_X2, LINE_BOT_Y, ST77XX_WHITE);
+    tft.drawLine(LINE_X1, LINE_MID_Y, LINE_X2, LINE_MID_Y, ST77XX_BLACK);
+    tft.drawLine(LINE_X1, LINE_BOT_Y, LINE_X2, LINE_BOT_Y, ST77XX_BLACK);
 
     // Circulateur (disque + contour)
-    tft.drawCircle(CIRC_X, CIRC_Y, CIRC_R, ST77XX_WHITE);
+    tft.drawCircle(CIRC_X, CIRC_Y, CIRC_R, ST77XX_BLACK);
     tft.fillCircle(CIRC_X, CIRC_Y, CIRC_R - 1, COLOR_DARKGREY);
     tft.setCursor(CIRC_X - 8, CIRC_Y - 3);
     tft.setTextColor(ST77XX_WHITE, COLOR_DARKGREY);
@@ -175,17 +197,18 @@ void updateStove() {
         // Re-dessiner la porte par-dessus
         int doorX = STOVE_X + (STOVE_W - DOOR_W) / 2;
         int doorY = STOVE_Y + STOVE_H - DOOR_H - 10;
-        tft.drawRect(doorX, doorY, DOOR_W, DOOR_H, ST77XX_WHITE);
+        tft.drawRect(doorX, doorY, DOOR_W, DOOR_H, ST77XX_BLACK);
 
         // Afficher la température au centre
         char buf[16];
         dtostrf(stoveTemperature, 5, 1, buf);
-        tft.setTextColor(ST77XX_WHITE, col);
+        tft.setTextSize(2);
+        tft.setTextColor(ST77XX_BLACK, ST77XX_WHITE);
         int cx = STOVE_X + 8;
         int cy = STOVE_Y + 8;
         tft.setCursor(cx, cy);
         tft.print(buf);
-        tft.print(" C");
+        tft.setTextSize(1);
 
         previousStoveTemperature = stoveTemperature;
     }
@@ -198,31 +221,36 @@ void updateTank() {
     int yMid = TANK_Y + hSec;
     int yBot = TANK_Y + 2 * hSec;
 
-    auto drawZone = [&](int y, float tNow, float &tPrev, const char *label) {
+    auto drawZone = [&](int y, float tNow, float &tPrev) {
         if (hasChanged(tNow, tPrev)) {
             uint16_t col = tempToColor565(tNow);
             tft.fillRect(TANK_X + 1, y + 1, TANK_W - 2, hSec - 2, col);
 
-            // gradient “fake” (petite barre verticale à gauche)
-            // tft.drawFastVLine(TANK_X + 2, y + 1, hSec - 2, ST77XX_WHITE);
-
-            // Texte
+            // Texte avec fond blanc et padding 1 px
             char buf[16];
             dtostrf(tNow, 5, 1, buf);
-            tft.setTextColor(ST77XX_WHITE, col);
-            tft.setCursor(TANK_X + 6, y + 6);
-            tft.print(label);
-            tft.print(": ");
+
+            const int16_t textX = TANK_X + 6;
+            const int16_t textY = y + 30;
+
+            int16_t bx, by;
+            uint16_t bw, bh;
+            tft.setTextSize(2);
+            tft.getTextBounds(buf, textX, textY, &bx, &by, &bw, &bh);
+            tft.fillRect(bx - 1, by - 1, bw + 2, bh + 2, ST77XX_WHITE);
+
+            tft.setTextColor(ST77XX_BLACK, ST77XX_WHITE);
+            tft.setCursor(textX, textY);
             tft.print(buf);
-            tft.print(" C");
+            tft.setTextSize(1);
 
             tPrev = tNow;
         }
     };
 
-    drawZone(yTop, bufferTankTopTemperature, previousBufferTankTopTemperature, "Top");
-    drawZone(yMid, bufferTankMiddleTemperature, previousBufferTankMiddleTemperature, "Mid");
-    drawZone(yBot, bufferTankBottomTemperature, previousBufferTankBottomTemperature, "Bot");
+    drawZone(yTop, bufferTankTopTemperature, previousBufferTankTopTemperature);
+    drawZone(yMid, bufferTankMiddleTemperature, previousBufferTankMiddleTemperature);
+    drawZone(yBot, bufferTankBottomTemperature, previousBufferTankBottomTemperature);
 }
 
 void updateCirculator() {
@@ -321,4 +349,65 @@ void setRelay(bool on) {
 #else
     digitalWrite(RELAY_PIN, on ? HIGH : LOW);
 #endif
+}
+
+static void formatMMSS(unsigned long seconds, char *out, unsigned int n) {
+    unsigned long m = seconds / 60UL;
+    unsigned long s = seconds % 60UL;
+    snprintf(out, n, "%02lu:%02lu", m, s);
+}
+
+void updateStatsOverlay() {
+    const int x = 4;
+    const int y = 4;
+    const int lineH = 12;
+    const int lines = 3;                 // toujours 3 lignes -> pas d'artefacts
+    const int w = 150;                   // un peu plus large pour le pourcentage
+    const int h = lines * lineH + 4;
+
+    const unsigned long nowMs = millis();
+    const unsigned long uptimeSec = nowMs / 1000UL;
+
+    // temps ON total incluant la session en cours (en ms)
+    const unsigned long totalOnMsInclCurrent =
+        relayOnTotalMs + (isCirculatorOn ? relayOnElapsedMs : 0UL);
+
+    // pourcentage monotone (en ms, arrondi au plus proche)
+    unsigned int pct = 0U;
+    if (nowMs > 0UL) {
+        pct = (unsigned int)((totalOnMsInclCurrent * 100UL + (nowMs / 2UL)) / nowMs);
+        if (pct > 100U) { pct = 100U; }
+    }
+
+    // fond blanc couvrant les 3 lignes (efface les anciens contenus)
+    tft.fillRect(x - 2, y - 2, w, h, ST77XX_WHITE);
+
+    // texte
+    tft.setTextSize(1);
+    tft.setTextColor(ST77XX_BLACK, ST77XX_WHITE);
+
+    char buf[16];
+
+    // Ligne 1 : Uptime total
+    formatMMSS(uptimeSec, buf, sizeof(buf));
+    tft.setCursor(x, y);
+    tft.print("Up: ");
+    tft.print(buf);
+
+    // Ligne 2 : Total ON + %
+    formatMMSS((totalOnMsInclCurrent / 1000UL), buf, sizeof(buf));
+    tft.setCursor(x, y + lineH);
+    tft.print("On: ");
+    tft.print(buf);
+    tft.print(" (");
+    tft.print((int)pct);
+    tft.print("%)");
+
+    // Ligne 3 : Session courante (si ON), sinon on laisse blanc (déjà effacé)
+    tft.setCursor(x, y + 2 * lineH);
+    if (isCirculatorOn) {
+        formatMMSS((relayOnElapsedMs / 1000UL), buf, sizeof(buf));
+        tft.print("Run: ");
+        tft.print(buf);
+    }
 }
