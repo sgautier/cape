@@ -15,8 +15,8 @@
 #define RELAY_ACTIVE_LOW 1   // mets 0 si ton relais est actif HIGH
 
 // --- Seuils & hystérésis ---
-#define STOVE_TEMPERATURE_START_CIRCULATOR 33
-#define STOVE_TEMPERATURE_HYSTERESIS       10
+#define STOVE_TEMPERATURE_START_CIRCULATOR 50
+#define STOVE_TEMPERATURE_HYSTERESIS       5
 
 // --- NTC / filtrage ---
 #define TEMPERATURE_NTC_B          3950
@@ -28,7 +28,7 @@
 
 // ---------------- Échelle couleurs ------------
 #define TEMP_MIN_C   10.0f
-#define TEMP_MAX_C   100.0f    // ajuste à 80/90 si tu veux
+#define TEMP_MAX_C   85.0f    // ajuste à 80/90 si tu veux
 
 // Helpers couleurs 16-bits RGB565
 #define RGB565(r,g,b)  ( ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | ((b & 0xF8) >> 3) )
